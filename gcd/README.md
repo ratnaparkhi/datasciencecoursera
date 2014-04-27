@@ -4,7 +4,7 @@ Assignment - Getting and Cleaning the Accelerometer Data
 1) Overview
 ===========
 A) run_analysis.R - This file has the all the required R code for the assignment. Execute this file to generate the tidy dataset. It does the following - 
-i) Unzip "getdata-projectfiles-UCI HAR Dataset.zip"" in the current directory. 
+i) Unzip "getdata-projectfiles-UCI HAR Dataset.zip" in the current directory. 
 ii) Complete the processing setps for the assignment and create a tidy data set file named - UCI-HAR-TidyDataset.txt [Note: Assignment Purpose/Goals are copied in Section 3 below for reference]
 iii) Deletes (unlinks) the unzipped (extracted) raw data files. 
 
