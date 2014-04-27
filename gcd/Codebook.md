@@ -3,7 +3,11 @@ Code book for Accelerometer Tidy Data set
 
 A) Tidy data: UCI-HAR-TidyDataset.txt
 =====================================
-B) Raw data:
+This tidy dataset is created by running the steps give in 'C' below on the raw dataset given in 'B' below. 
+
+
+B) Raw data
+===========
 https://d396qusza40orc.cloudfront.net/getdata%2Fprojectfiles%2FUCI%20HAR%20Dataset.zip 
 
 The raw dataset is generated/created for Human Activity Recognition using Samsung 
