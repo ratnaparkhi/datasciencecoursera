@@ -1,0 +1,157 @@
+---
+output: pdf_document
+---
+## Building predictive model(s) for word prediction: Preliminary Analysis Report
+[Author: Prashant Ratnaparkhi]
+```{r echo = FALSE, warning=FALSE, message=FALSE}
+library(tm)
+library(SnowballC)
+library(filehash)
+library(MASS)
+Sys.setenv(JAVA_HOME='C:\\Program Files\\Java\\jre7')
+##library(openNLP)
+library(RWeka)
+#library(RTextTools)
+library(stringi)
+##library(markovchain)
+### Ran these two to get Rgraphviz package. Rgraphviz is required for plot function from tm.
+## source("http://bioconductor.org/biocLite.R")
+### biocLite("Rgraphviz")
+library(Rgraphviz)
+library(tau)
+library(ggplot2)
+
+twtr.lines.v = scan("D:/prashant/coursera-dsc/capstone/final/en_us/en_US.twitter.txt", what = "character", sep = "\n")
+news.lines.v = scan("D:/prashant/coursera-dsc/capstone/final/en_us/en_US.news.txt", what = "character", sep = "\n")
+blogs.lines.v = scan("D:/prashant/coursera-dsc/capstone/final/en_us/en_US.blogs.txt", what = "character", sep = "\n")
+## Create table with file name, no. of lines, no of words/tokens, and word ## types. 
+lnTwts = length(twtr.lines.v)
+lnNews = length(news.lines.v)
+lnBlgs = length(blogs.lines.v)
+twtr.v = tolower(paste(twtr.lines.v, collapse = " "))
+news.v = tolower(paste(news.lines.v, collapse = " "))
+blogs.v = tolower(paste(blogs.lines.v, collapse = " "))
+twtrWords.v = unlist(strsplit(twtr.v, "\\W"))
+newsWords.v = unlist(strsplit(news.v, "\\W"))
+blogsWords.v = unlist(strsplit(blogs.v, "\\W"))
+twtrWords.v = twtrWords.v[which(twtrWords.v != "")]
+newsWords.v = twtrWords.v[which(newsWords.v != "")]
+blogsWords.v = twtrWords.v[which(blogsWords.v != "")]
+twtrWordTypes.v = unique(twtrWords.v)
+newsWordTypes.v = unique(newsWords.v)
+blogsWordTypes.v = unique(blogsWords.v)
+numTwtrWords = length(twtrWords.v)
+numNewsWords = length(newsWords.v)
+numBlgsWords = length(blogsWords.v)
+numTwtrWordTypes = length(twtrWordTypes.v)
+numNewsWordTypes = length(newsWordTypes.v)
+numBlgsWordTypes = length(blogsWordTypes.v)
+twtrSummary = c("en_US.twitter.txt", lnTwts, numTwtrWords, numTwtrWordTypes)
+newsSummary = c("en_US.news.txt", lnNews, numNewsWords, numNewsWordTypes)
+blogsSummary = c("en_US.blogs.txt", lnBlgs, numBlgsWords, numBlgsWordTypes)
+
+fileName = c("en_US.twitter.txt", "en_US.news.txt", "en_US.blogs.txt")
+numLines = c(lnTwts, lnNews, lnBlgs)
+numWords = c(numTwtrWords, numNewsWords, numBlgsWords)
+numWordTypes = c(numTwtrWordTypes, numNewsWordTypes, numBlgsWordTypes)
+rawDataSummary.df = data.frame(fileName, numLines, numWords, numWordTypes)
+
+# Preprocessing and corpus creation. Read 20% of lines, and create sample 
+twSkip = sample(1:lnTwts,5)[1]
+nwSkip = sample(1:lnNews,5)[1]
+bwSkip = sample(1:lnBlgs,5)[1]
+
+twtrs = scan("D:/prashant/coursera-dsc/capstone/final/en_us/en_US.twitter.txt", what = "character", sep = "\n", skip = twSkip, nlines = round(lnTwts * 0.2))
+news11 = scan("D:/prashant/coursera-dsc/capstone/final/en_us/en_US.news.txt", what = "character", sep = "\n", skip = nwSkip, nlines = round(lnNews * 0.2) )
+blogs = scan("D:/prashant/coursera-dsc/capstone/final/en_us/en_US.blogs.txt", what = "character", sep = "\n", skip = bwSkip, nlines = round(lnBlgs * 0.2 ))
+## Get rid of lines with non-ascii characters. 
+twtrs1 = twtrs[-grep ("NonAsciChar", iconv(twtrs, "latin1", sub="NonAsciChar"))]
+news1 = news11[-grep ("NonAsciChar", iconv(news11, "latin1", sub="NonAsciChar"))]
+blogs1 = blogs[-grep ("NonAsciChar", iconv(blogs, "latin1", sub="NonAsciChar"))]
+## Write these lines to create files in the Sample directory
+twtrCon1 = file("D:/prashant/coursera-dsc/capstone/Sample/twtSample.txt", "w")
+writeLines(twtrs1, twtrCon1)
+newsCon1 = file("D:/prashant/coursera-dsc/capstone/Sample/nwSample.txt", "w")
+writeLines(news1, newsCon1)
+blogsCon1 = file("D:/prashant/coursera-dsc/capstone/Sample/blgSample.txt", "w")
+writeLines(blogs1, blogsCon1)
+close(twtrCon1)
+close(newsCon1)
+close(blogsCon1)
+## Create a swear word list.
+## List obtained from http://www.bannedwordlist.com/lists/swearWords.txt
+con1 = file("D:/prashant/coursera-dsc/capstone/swearWords.txt", 'r')
+swList = readLines(con1)
+close(con1)
+## To use words only from a dictionary, create word list. 
+dcon1 = file("D:/prashant/coursera-dsc/capstone/EN-dictionary/EnglishWordlist.txt", "r")
+wrdList = readLines(dcon1)
+close(dcon1)
+
+# Prepare corpus from the files in sample directory.
+inp.dir = train.dir = "D:/prashant/coursera-dsc/capstone/Sample"
+corp1=Corpus(DirSource(inp.dir, encoding = "UTF-8"), readerControl=list(reader=readPlain, language="en"))
+   
+corp1Tr = tm_map(corp1, stripWhitespace)
+corp1Tr = tm_map(corp1Tr, removePunctuation) 
+corp1Tr = tm_map(corp1Tr, removeNumbers)
+corp1Tr = tm_map(corp1Tr, content_transformer(tolower))
+corp1Tr = tm_map(corp1Tr, removeWords, stopwords("english"))
+corp1Tr = tm_map(corp1Tr, removeWords, swList)
+# Create a term document matrix for further exploration
+## for the purpose of this analysis, words from dictionary are used and
+## also term used in at least one document are selected using bounds
+tdm1 = TermDocumentMatrix(corp1Tr, control = list(tokenize = words, dictionary = wrdList, bounds = list(global = c(1,3))))
+termFreq.v = rowSums(as.matrix(tdm1))
+termFreq.ord.v = order(termFreq.v)
+freqTerms = sort(rowSums(as.matrix(tdm1)), decreasing = TRUE)
+freq.df = data.frame(Word=names(freqTerms), Frequency=freqTerms)
+relFreqTerms = 100 * freqTerms/sum(freqTerms)
+
+```
+### Executive Summary: 
+The goal is to build a predictive text model to predict next word in a sequence of words. This preliminary analysis of the raw text data is performed with the stated goal in mind. The raw data consists of three files containing twitter messages, news articles and blogs written in colloquial text. This report has 3 sections. First section summarizes the raw data and second section summarizes the results of cleaning & preprocessing the data.The third section contains important observations, remarks and next steps to achieve the goal.  
+
+### 1. Raw data Summary 
+The number of lines, words and word types (unique words) are tabulated below. This includes numbers, non-ascii text, symbols, swear words, mis-spelt words - essentially anything & everything.  
+
+```{r echo = FALSE, warning=FALSE, message=FALSE}
+rawDataSummary.df
+```
+### 2. Cleaning, pre-processing & corpus creation
+Due to processing time constraints, a random sample of 20% of raw data is selected to create a corpus & term document matrix using the 'tm' package. Cleaning & preprocessing involved removal of: (i) non-ascii characters, (ii) swear words, (iii) numbers, (iv) punctuation marks, (v) mis-spelt words, (vi) English stopwords (words such as 'the', 'am'etc.)  Summary of term (word) frequency distribution is shown below:
+```{r echo = FALSE, warning=FALSE, message=FALSE}
+summary(freqTerms)
+```
+In the sample: (i) `r dim(freq.df[freq.df$Frequency==round(mean(freqTerms)),])[1]` terms are used with average frequency, (ii) `r dim(freq.df[freq.df$Frequency==round(min(freqTerms)),])[1]` terms are used with minimum frequency, and (iii) `r dim(freq.df[freq.df$Frequency==round(max(freqTerms)),])[1]` term(s) are used with maximum frequecy. 
+Most terms (or words) are used only once. Word frequency histogram and word associations for top five words are shown in the panel below.
+
+```{r echo = FALSE, warning=FALSE, message=FALSE, fig.show='hold', fig.width=8, fig.height=3} 
+op <- par(mfrow=c(1,2)) 
+
+truehist(termFreq.v, col = "blue", main="Histogram of word frequencies", las=2, xlab = "Frequency", ylab="#Words",cex.lab = 1.3,prob=FALSE)
+
+plot(tdm1, terms=findFreqTerms(tdm1, lowfreq=20000)[1:5],corThreshold=0.9, main = "Correlation (0.9) Network Diagram", weighting = FALSE)
+
+par(op)
+```
+
+```{r echo = FALSE, warning=FALSE, message=FALSE, fig.show='hold', fig.width=8, fig.height=3} 
+pl1 <- ggplot(subset(freq.df, Frequency > 20000), aes(Word, Frequency))
+pl1 <- pl1 + geom_bar(colour = "blue", stat="identity")
+pl1 <- pl1 + theme(axis.text.x=element_text(angle=45, hjust=1))
+plot(pl1)
+
+``` 
+
+```{r echo = FALSE, warning=FALSE, message=FALSE, fig.show='hold', fig.width=8, fig.height=3} 
+ plot(relFreqTerms[1:10], type="b", xlab="Top Ten Words", ylab="% of sample corpus", xaxt="n")
+axis(1, 1:10, labels=names(relFreqTerms[1:10]))
+```
+
+The first plot above is a bar plot showing words with frequency of usage greater than 20000 and the second plot shows percentage of usage for top 10 words.
+
+### 3. Observations & next steps
+(1) The most challenging part, so far, has been the size of the raw data. This R code with 20% sample data takes approx 2 hours on 64 bit/8Gb/4 CPU Windows server.  With 2% sample data it takes approx. 10 minutes. Most time is spent in creating corpus and term document matrix.
+(2) The term document matrix built in this analysis, forms the uni-gram representation of the sample data set, and can be used for feature selection in subsequent steps.
+(3) The next steps include: (i) Selecting & training an N-Gram language model. Choices include tri-gram models based on linear interpolation, Katz backoff (with appropriate smoothing techniques) etc. (ii) Rapid, iterative evaluation (using cross validation and test samples) of the models and revisiting step-(i), as needed to finalize a particualr model. (iii) Scaling of steps-(i) and (ii) to handle larger sample sizes - ideally 60% of raw data for training, 20% for cross validation and 20% for testing. 
